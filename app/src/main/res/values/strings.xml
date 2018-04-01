@@ -6,4 +6,5 @@
 
     <string name="start_scan">Start Scan</string>
     <string name="already_scanning">Scan is already in progress.</string>
+    <string name="permissions_required">Wireless permissions are mandatory.</string>
 </resources>

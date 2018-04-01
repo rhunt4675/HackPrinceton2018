@@ -2,57 +2,77 @@ package edu.mines.ryhunt.wifidistanceestimator;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
-import android.graphics.PointF;
-import android.net.wifi.ScanResult;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentManager;
+import android.support.v4.app.FragmentPagerAdapter;
 import android.support.v4.content.ContextCompat;
+import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
-import android.widget.ListView;
-import android.widget.TextView;
+import android.widget.Toast;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import edu.mines.ryhunt.wifidistanceestimator.Wifi.Estimator.APEstimator;
-import edu.mines.ryhunt.wifidistanceestimator.Wifi.Estimator.PrincetonAPEstimator;
 import edu.mines.ryhunt.wifidistanceestimator.Wifi.ScanManager;
-import edu.mines.ryhunt.wifidistanceestimator.Wifi.ScanResultListAdapter;
 
 public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1;
-    private static final APEstimator _estimator = new PrincetonAPEstimator();
-
+    private static final int MY_PERMISSIONS_REQUEST_CAMERA = 2;
+    private final FeedFragment _feedFragment = new FeedFragment();
+    private final DebugFragment _debugFragment = new DebugFragment();
     private ScanManager _scanner = null;
-    private boolean _scanning = false;
-    private ListView _scanList;
-    private TextView _positionEstimate;
-    private MapView _mapView;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        _scanList = findViewById(R.id.activityMain_scanResultListView);
-        _positionEstimate = findViewById(R.id.activityMain_positionEstimate);
-        _mapView = findViewById(R.id.activityMain_floorplan);
-        _mapView.setImageResource(R.drawable.basement);
-        _mapView.setupMap(_estimator.getOriginOffset(), _estimator.getMScale(),
-                new ArrayList<>(_estimator.getAPs().values()));
+        ViewPager pager = findViewById(R.id.activityMain_viewPager);
+        pager.setAdapter(new WifiFragmentPagerAdapter(getSupportFragmentManager()));
+
+        // Acquire Mandatory Permissions
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+
+            // Request User's Permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
+                    MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+
+            // Request User's Permission
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.CAMERA},
+                    MY_PERMISSIONS_REQUEST_CAMERA);
+        }
     }
 
     @Override
-    protected void onStart() {
+    public void onStart() {
         super.onStart();
         runScan();
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         super.onStop();
         stopScan();
+    }
+
+    private void runScan() {
+        // Execute Scan
+        _scanner = new ScanManager();
+        _scanner.registerListener(_debugFragment);
+        _scanner.registerListener(_feedFragment);
+        _scanner.startScanning(this);
+    }
+
+    private void stopScan() {
+        if (_scanner != null)
+            _scanner.stopScanning(this);
     }
 
     @Override
@@ -61,47 +81,48 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION: {
                 if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED)
-                    runScan();
+                        && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                    // Crash the Application if Not Acquired
+                    Toast.makeText(this, R.string.permissions_required,
+                            Toast.LENGTH_LONG).show();
+                    System.exit(0);
+                }
+            }
+            case MY_PERMISSIONS_REQUEST_CAMERA: {
+                if (grantResults.length > 0
+                        && grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+
+                    // Crash the Application if Not Acquired
+                    Toast.makeText(this, R.string.permissions_required,
+                            Toast.LENGTH_LONG).show();
+                    System.exit(0);
+                }
             }
         }
     }
 
-    private void runScan() {
-        // Verify Permissions
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+    private class WifiFragmentPagerAdapter extends FragmentPagerAdapter {
+        private final String[] _titles = {"Live Feed", "Debug"};
 
-            // Request User's Permission
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
-                    MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
-            return;
+        WifiFragmentPagerAdapter(FragmentManager fm) {
+            super(fm);
         }
 
-        // Execute Scan
-        _scanner = new ScanManager().registerListener(new ScanManager.ScanManagerListener() {
-            @Override
-            public void onScanResults(List<ScanResult> scanResults) {
+        @Override
+        public Fragment getItem(int i) {
+            if (i == 0) return MainActivity.this._feedFragment;
+            else return MainActivity.this._debugFragment;
+        }
 
-                // Sort and Filter Results
-                _estimator.sortAndFilter(scanResults);
+        @Override
+        public int getCount() {
+            return 2;
+        }
 
-                // Display Results in ListView
-                _scanList.setAdapter(new ScanResultListAdapter(MainActivity.this,
-                        scanResults.toArray(new ScanResult[scanResults.size()]), _estimator));
-
-                // Estimate Location
-                PointF estimate = _estimator.estimatePosition(scanResults);
-                _positionEstimate.setText(estimate == null ? "N/A" : estimate.toString());
-                _mapView.setUserLocation(estimate);
-            }
-        });
-        _scanner.startScanning(MainActivity.this);
-    }
-
-    private void stopScan() {
-        if (_scanner != null)
-            _scanner.stopScanning(MainActivity.this);
+        @Override
+        public CharSequence getPageTitle(int position) {
+            return _titles[position];
+        }
     }
 }

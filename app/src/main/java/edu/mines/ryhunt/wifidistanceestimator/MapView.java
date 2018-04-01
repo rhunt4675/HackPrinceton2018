@@ -38,13 +38,25 @@ public class MapView extends AppCompatImageView {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+        if (_aps == null) return;
 
+        canvas.scale(getWidth() / 1080.f, getWidth() / 1080.f);
+
+        // Draw APs
         for (Point3D ap : _aps) {
             _paint.setColor(Color.BLUE);
             canvas.drawCircle(_offset.x + ap.getX() * _scale,
                     _offset.y - ap.getY() * _scale, 10, _paint);
         }
 
+        // Draw Route
+        _paint.setColor(Color.GREEN);
+        _paint.setStrokeWidth(5.f);
+        canvas.drawLine(_offset.x + 6 * _scale, _offset.y, _offset.x - 10 * _scale, _offset.y, _paint);
+        canvas.drawLine(_offset.x - 10 * _scale, _offset.y, _offset.x - 10 * _scale, _offset.y + 12 * _scale, _paint);
+        canvas.drawLine(_offset.x - 10 * _scale, _offset.y + 12 * _scale, _offset.x - 30 * _scale, _offset.y + 12 * _scale, _paint);
+
+        // Draw Current Location
         if (_location != null) {
             _paint.setColor(Color.RED);
             canvas.drawCircle(_offset.x + _location.x * _scale,
